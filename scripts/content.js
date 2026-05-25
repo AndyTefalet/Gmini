@@ -1,5 +1,23 @@
+// הגדרת תצורת DOM דינמית בהתאם לפלטפורמה (Gemini או ChatGPT)
+const PLATFORM = window.location.hostname.includes("chatgpt.com") ? "CHATGPT" : "GEMINI";
+
+const DOM_CONFIG = {
+    GEMINI: {
+        messageSelector: 'user-query-content, message-content',
+        isUser: (el) => el.tagName.toLowerCase() === 'user-query-content',
+        inputSelector: 'rich-textarea div[contenteditable="true"], div[contenteditable="true"]',
+        sendSelector: 'button[aria-label="Send message"], button[aria-label="Send message to Gemini"]'
+    },
+    CHATGPT: {
+        messageSelector: '[data-message-author-role]',
+        isUser: (el) => el.getAttribute('data-message-author-role') === 'user',
+        inputSelector: '#prompt-textarea',
+        sendSelector: 'button[data-testid="send-button"]'
+    }
+}[PLATFORM];
+
 // ==========================================
-// 1. האזנה להודעות מה-Popup (לגיבוי בלבד)
+// 1. האזנה להודעות מה-Popup
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "EXTRACT_AND_SAVE_CHAT") {
@@ -20,22 +38,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // ==========================================
 // 2. בניית הממשק הצף (Floating UI)
 // ==========================================
-// ==========================================
-// 2. בניית הממשק הצף (Floating UI) - כולל מנגנון קיפול
-// ==========================================
 function createFloatingPanel() {
-    // מניעת הזרקה כפולה
-    if (document.getElementById('gemini-temp-floating-panel')) return;
+    if (document.getElementById('llm-temp-floating-panel')) return;
 
     const panel = document.createElement('div');
-    panel.id = 'gemini-temp-floating-panel';
-    // המיקום המותאם אישית שלך, בתוספת הגדרות מעבר (Transition) לתחושה חלקה
+    panel.id = 'llm-temp-floating-panel';
     panel.style.cssText = 'position: fixed; top: 1px; left: 290px; z-index: 999999; background: #ffffff; padding: 12px 15px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); border: 1px solid #dadce0; display: flex; flex-direction: column; font-family: "Segoe UI", Tahoma, Geneva, sans-serif; direction: rtl; width: 220px; transition: all 0.3s ease;';
 
-    // חלוקה לכותרת (לחיצה) ותוכן (ניתן להסתרה)
+    const titleStr = PLATFORM === "GEMINI" ? "צבירת ידע - Gemini" : "צבירת ידע - ChatGPT";
+
     panel.innerHTML = `
         <div id="float-header" style="font-weight: 800; font-size: 14px; color: #1a73e8; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
-            <span>צבירת ידע - Gemini</span>
+            <span>${titleStr}</span>
             <span id="float-toggle-icon" style="font-size: 12px; transition: transform 0.3s;">▼</span>
         </div>
         
@@ -50,7 +64,6 @@ function createFloatingPanel() {
 
     document.body.appendChild(panel);
 
-    // לוגיקת הקיפול והפתיחה (Toggle)
     const header = document.getElementById('float-header');
     const content = document.getElementById('float-content');
     const icon = document.getElementById('float-toggle-icon');
@@ -61,11 +74,10 @@ function createFloatingPanel() {
             icon.style.transform = 'rotate(0deg)';
         } else {
             content.style.display = 'none';
-            icon.style.transform = 'rotate(180deg)'; // היפוך החץ
+            icon.style.transform = 'rotate(180deg)';
         }
     });
 
-    // הפעלת הפונקציות ישירות מהממשק הצף
     document.getElementById('float-save-btn').addEventListener('click', () => {
         updateFloatStatus("סורק ושואב...", "#1a73e8");
         executeExtraction();
@@ -123,26 +135,23 @@ function updateFloatingUIState() {
     });
 }
 
-// האזנה לשינויים בזיכרון כדי לעדכן את הממשק הצף בזמן אמת
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local' && changes.accumulatedChats) {
         updateFloatingUIState();
     }
 });
 
-// וידוא שהממשק שורד מעברים בין עמודים בארכיטקטורת SPA של גוגל
 setInterval(createFloatingPanel, 1000);
-
 
 // ==========================================
 // 3. מנוע החילוץ (Extraction)
 // ==========================================
 function injectForkButtons() {
-    const messages = document.querySelectorAll('user-query-content, message-content');
+    const messages = document.querySelectorAll(DOM_CONFIG.messageSelector);
     messages.forEach((msg, index) => {
         if (!msg.hasAttribute('data-fork-injected')) {
             const btnContainer = document.createElement('div');
-            btnContainer.className = 'gemini-fork-container';
+            btnContainer.className = 'llm-fork-container';
             btnContainer.style.cssText = 'display: flex; justify-content: flex-end; margin-top: 10px; padding-bottom: 5px;';
 
             const btn = document.createElement('button');
@@ -158,7 +167,7 @@ function injectForkButtons() {
                 executeExtraction(index, null);
                 
                 setTimeout(() => {
-                    const container = msg.querySelector('.gemini-fork-container');
+                    const container = msg.querySelector('.llm-fork-container');
                     if (container) container.style.display = 'none';
                 }, 800);
             });
@@ -172,7 +181,7 @@ function injectForkButtons() {
 
 function executeExtraction(targetIndex = null, sendResponse = null) {
     try {
-        const messages = document.querySelectorAll('user-query-content, message-content');
+        const messages = document.querySelectorAll(DOM_CONFIG.messageSelector);
         if (messages.length === 0) {
             updateFloatStatus("השיחה ריקה.", "red");
             if(sendResponse) sendResponse({ success: false, error: "השיחה ריקה." });
@@ -184,11 +193,11 @@ function executeExtraction(targetIndex = null, sendResponse = null) {
 
         for (let i = 0; i <= limit; i++) {
             const msg = messages[i];
-            const isUser = msg.tagName.toLowerCase() === 'user-query-content';
-            const prefix = isUser ? "משתמש:" : "Gemini:";
+            const isUser = DOM_CONFIG.isUser(msg);
+            const prefix = isUser ? "משתמש:" : "AI:";
             
             const clone = msg.cloneNode(true);
-            const containerToRemove = clone.querySelector('.gemini-fork-container');
+            const containerToRemove = clone.querySelector('.llm-fork-container');
             if (containerToRemove) clone.removeChild(containerToRemove);
 
             const text = clone.textContent.trim();
@@ -235,7 +244,7 @@ function executeInjection(sendResponse) {
                 return;
             }
 
-            const inputBox = document.querySelector('rich-textarea div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"]');
+            const inputBox = document.querySelector(DOM_CONFIG.inputSelector);
             if (!inputBox) {
                 if(sendResponse) sendResponse({ success: false, error: "לא נמצאה תיבת קלט." });
                 return;
@@ -255,8 +264,11 @@ function executeInjection(sendResponse) {
             inputBox.dispatchEvent(new Event('input', { bubbles: true }));
 
             setTimeout(() => {
-                const sendBtn = document.querySelector('button[aria-label="Send message"], button[aria-label="Send message to Gemini"]');
-                if (sendBtn) sendBtn.click();
+                const sendBtn = document.querySelector(DOM_CONFIG.sendSelector);
+                // ב-ChatGPT, לפעמים כפתור השליחה נעול עד שהמודל מסיים לכתוב. המערכת לוחצת רק אם הכפתור פעיל.
+                if (sendBtn && !sendBtn.disabled) {
+                    sendBtn.click();
+                }
             }, 500);
 
             chrome.storage.local.remove(['accumulatedChats']);
