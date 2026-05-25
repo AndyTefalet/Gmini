@@ -1,35 +1,29 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    
     if (request.action === "EXTRACT_AND_SAVE_CHAT") {
         executeExtraction(null, sendResponse);
         return true; 
     }
-
     if (request.action === "ACTIVATE_FORK_MODE") {
         injectForkButtons();
         sendResponse({ success: true });
         return true;
     }
-
     if (request.action === "INJECT_SAVED_CHAT") {
         executeInjection(sendResponse);
         return true;
     }
 });
 
-// פונקציה להזרקת כפתורי פיצול לתוך העמוד של גוגל
 function injectForkButtons() {
     const messages = document.querySelectorAll('user-query-content, message-content');
-    
     messages.forEach((msg, index) => {
-        // מונע הזרקה כפולה של כפתורים לאותה בועה
         if (!msg.hasAttribute('data-fork-injected')) {
             const btnContainer = document.createElement('div');
             btnContainer.className = 'gemini-fork-container';
             btnContainer.style.cssText = 'display: flex; justify-content: flex-end; margin-top: 10px; padding-bottom: 5px;';
 
             const btn = document.createElement('button');
-            btn.textContent = '✂️ פצל שיחה מנקודה זו';
+            btn.textContent = '✂️ פצל והוסף לצירוף';
             btn.style.cssText = 'background: #fbbc04; color: #202124; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: all 0.2s;';
             
             btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
@@ -38,15 +32,15 @@ function injectForkButtons() {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // שינוי עיצוב הכפתור לחיווי חזותי
-                btn.textContent = '✓ נשאב לזיכרון';
+                btn.textContent = '✓ התווסף לצירוף';
                 btn.style.background = '#0f9d58';
                 btn.style.color = 'white';
                 executeExtraction(index, null);
                 
-                // הסתרת כל כפתורי הפיצול לאחר פעולה
-                document.querySelectorAll('.gemini-fork-container').forEach(c => c.style.display = 'none');
-                alert("השיחה נשאבה עד לנקודה זו ונשמרה בזיכרון! כעת פתח שיחה חדשה ולחץ על הזרק מהתוסף.");
+                setTimeout(() => {
+                    const container = msg.querySelector('.gemini-fork-container');
+                    if (container) container.style.display = 'none';
+                }, 800);
             });
 
             btnContainer.appendChild(btn);
@@ -56,7 +50,6 @@ function injectForkButtons() {
     });
 }
 
-// פונקציית החילוץ (תומכת גם בחילוץ מלא וגם בחילוץ עד אינדקס מסוים)
 function executeExtraction(targetIndex = null, sendResponse = null) {
     try {
         const messages = document.querySelectorAll('user-query-content, message-content');
@@ -73,7 +66,6 @@ function executeExtraction(targetIndex = null, sendResponse = null) {
             const isUser = msg.tagName.toLowerCase() === 'user-query-content';
             const prefix = isUser ? "משתמש:" : "Gemini:";
             
-            // שכפול האלמנט כדי להסיר את כפתור הפיצול מתוך הטקסט הנשאב
             const clone = msg.cloneNode(true);
             const containerToRemove = clone.querySelector('.gemini-fork-container');
             if (containerToRemove) clone.removeChild(containerToRemove);
@@ -85,29 +77,23 @@ function executeExtraction(targetIndex = null, sendResponse = null) {
         }
 
         const MAX_LENGTH = 15000;
-        let fullChatText = "";
+        let currentSnippetText = "";
 
         if (chatLog.length > MAX_LENGTH) {
             const truncatedLog = chatLog.substring(chatLog.length - MAX_LENGTH);
-            fullChatText = "הוראת מערכת: אני מעביר לכאן שיחה זמנית שהתחלנו קודם. שים לב: השיחה המקורית הייתה ארוכה מדי ולכן הועבר אליך רק החלק האחרון שלה.\n" +
-                           "המשימה שלך כעת:\n" +
-                           "1. עדכן אותי שהשיחה נחתכה ושקיבלת רק את סופה.\n" +
-                           "2. שאל אותי עד 3 שאלות קצרות וממוקדות כדי להבין מה היה ההקשר בחלק החסר ואיך תרצה להמשיך.\n\n" +
-                           "--- תחילת היסטוריית שיחה (חלק אחרון בלבד) ---\n\n" +
-                           truncatedLog +
-                           "\n--- סוף היסטוריית שיחה ---";
+            currentSnippetText = "--- תחילת בלוק מידע (חלק אחרון בלבד עקב מגבלת אורך) ---\n\n" + truncatedLog + "\n--- סוף בלוק מידע ---";
         } else {
-            fullChatText = "אני מעביר לכאן שיחה זמנית שהתחלנו קודם. להלן ההקשר של מה שדיברנו עד כה. אל תענה על זה, רק תאשר שהבנת ונוכל להמשיך מאותה נקודה:\n\n" +
-                           "--- תחילת היסטוריית שיחה ---\n\n" +
-                           chatLog +
-                           "\n--- סוף היסטוריית שיחה ---";
+            currentSnippetText = "--- תחילת בלוק מידע ---\n\n" + chatLog + "\n--- סוף בלוק מידע ---";
         }
 
-        chrome.storage.local.set({ 
-            savedChatContext: fullChatText,
-            pendingInjection: true 
-        }, () => {
-            if(sendResponse) sendResponse({ success: true });
+        // ניהול המערך בזיכרון המקומי
+        chrome.storage.local.get(['accumulatedChats'], (result) => {
+            const currentArray = result.accumulatedChats || [];
+            currentArray.push(currentSnippetText);
+
+            chrome.storage.local.set({ accumulatedChats: currentArray }, () => {
+                if(sendResponse) sendResponse({ success: true });
+            });
         });
 
     } catch (error) {
@@ -116,22 +102,34 @@ function executeExtraction(targetIndex = null, sendResponse = null) {
     }
 }
 
-// פונקציית ההזרקה (ללא שינוי מלבד המעטפת)
 function executeInjection(sendResponse) {
     try {
-        chrome.storage.local.get(['savedChatContext', 'pendingInjection'], (result) => {
-            if (!result.pendingInjection || !result.savedChatContext) {
-                sendResponse({ success: false, error: "אין מידע בזיכרון." });
+        chrome.storage.local.get(['accumulatedChats'], (result) => {
+            const chats = result.accumulatedChats || [];
+            if (chats.length === 0) {
+                sendResponse({ success: false, error: "אין מידע צבור בזיכרון." });
                 return;
             }
 
             const inputBox = document.querySelector('rich-textarea div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"]');
             if (!inputBox) {
-                sendResponse({ success: false, error: "לא נמצאה תיבת הקלט." });
+                sendResponse({ success: false, error: "לא נמצאה תיבת הקלט. ודא שפתחת שיחה חדשה." });
                 return;
             }
 
-            inputBox.textContent = result.savedChatContext;
+            // הנדסת פרומפט להזרקה מרובת קטעים
+            let finalPrompt = "הוראת מערכת: אני מעביר לכאן מספר קטעי הקשר שונים שנשאבו קודם לכן לצורך איחוד, סנכרון ומיזוג ידע.\n" +
+                              "המשימה שלך כעת:\n" +
+                              "1. קרא את כל בלוקי המידע המצורפים מטה כדי להבין את מכלול הנושאים.\n" +
+                              "2. אשר בקצרה שקיבלת את כל חלקי המידע, ואל תתחיל לפתור או לענות עדיין. חכה להנחיה הבאה שלי.\n\n" +
+                              "====================================\n" +
+                              "להלן ההקשרים שנצברו:\n" +
+                              "====================================\n\n";
+
+            // חיבור כל קטעי השיחה עם מפריד ברור
+            finalPrompt += chats.join("\n\n====================================\n\n");
+
+            inputBox.textContent = finalPrompt;
             inputBox.dispatchEvent(new Event('input', { bubbles: true }));
 
             setTimeout(() => {
@@ -139,7 +137,8 @@ function executeInjection(sendResponse) {
                 if (sendBtn) sendBtn.click();
             }, 500);
 
-            chrome.storage.local.remove(['savedChatContext', 'pendingInjection']);
+            // ניקוי הזיכרון לאחר ההזרקה המושלמת
+            chrome.storage.local.remove(['accumulatedChats']);
             sendResponse({ success: true });
         });
     } catch (error) {
