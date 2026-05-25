@@ -1,1 +1,1 @@
-# Gmini
+# Gemini
