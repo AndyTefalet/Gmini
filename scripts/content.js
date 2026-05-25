@@ -1,9 +1,11 @@
 // האזנה להודעות שמגיעות מה-Popup או מקבצים אחרים של התוסף
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
+    // ==========================================
+    // פעולה 1: שאיבת השיחה הישנה
+    // ==========================================
     if (request.action === "EXTRACT_AND_SAVE_CHAT") {
         try {
-            // חיפוש המיכל המרכזי של היסטוריית השיחה
             const chatHistory = document.querySelector('#chat-history');
             
             if (!chatHistory) {
@@ -11,7 +13,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 return true;
             }
 
-            // שליפת כל ההודעות של המשתמש ושל המודל לפי התגיות הסמנטיות
             const messages = chatHistory.querySelectorAll('user-query-content, message-content');
             
             if (messages.length === 0) {
@@ -19,16 +20,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 return true;
             }
 
-            // בניית הפרומפט שיעביר את ההקשר לשיחה החדשה
             let fullChatText = "אני מעביר לכאן שיחה זמנית שהתחלנו קודם. להלן ההקשר של מה שדיברנו עד כה. אל תענה על זה, רק תאשר שהבנת ונוכל להמשיך מאותה נקודה:\n\n";
             fullChatText += "--- תחילת היסטוריית שיחה ---\n\n";
 
-            // מעבר על כל הבועות וסידור שלהן בטקסט
             messages.forEach((msg) => {
                 const isUser = msg.tagName.toLowerCase() === 'user-query-content';
                 const prefix = isUser ? "משתמש:" : "Gemini:";
                 
-                // שליפת הטקסט הברור מתוך האלמנט
                 const text = msg.textContent.trim();
                 
                 if (text) {
@@ -38,10 +36,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
             fullChatText += "--- סוף היסטוריית שיחה ---";
 
-            // שמירת המידע שנשאב לזיכרון המקומי של התוסף
             chrome.storage.local.set({ 
                 savedChatContext: fullChatText,
-                pendingInjection: true // דגל שמסמן למערכת שיש שיחה שמחכה להזרקה
+                pendingInjection: true 
             }, () => {
                 sendResponse({ success: true });
             });
@@ -51,7 +48,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: false, error: "שגיאה פנימית במהלך שאיבת הנתונים." });
         }
         
-        // החזרת true הכרחית כדי להשאיר את ערוץ התקשורת פתוח לתשובה אסינכרונית
         return true; 
+    }
+
+    // ==========================================
+    // פעולה 2: הזרקת השיחה בחלון החדש
+    // ==========================================
+    if (request.action === "INJECT_SAVED_CHAT") {
+        try {
+            chrome.storage.local.get(['savedChatContext', 'pendingInjection'], (result) => {
+                if (!result.pendingInjection || !result.savedChatContext) {
+                    sendResponse({ success: false, error: "אין מידע בזיכרון." });
+                    return;
+                }
+
+                const inputBox = document.querySelector('rich-textarea div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"]');
+                
+                if (!inputBox) {
+                    sendResponse({ success: false, error: "לא נמצאה תיבת הקלט. ודא שאתה בעמוד שיחה חדשה." });
+                    return;
+                }
+
+                inputBox.textContent = result.savedChatContext;
+                
+                inputBox.dispatchEvent(new Event('input', { bubbles: true }));
+
+                setTimeout(() => {
+                    const sendBtn = document.querySelector('button[aria-label="Send message"], button[aria-label="Send message to Gemini"]');
+                    if (sendBtn) {
+                        sendBtn.click();
+                    } else {
+                        console.warn("Send button not found, context injected but not sent.");
+                    }
+                }, 500);
+
+                chrome.storage.local.remove(['savedChatContext', 'pendingInjection']);
+                sendResponse({ success: true });
+            });
+        } catch (error) {
+            console.error("Injection Error:", error);
+            sendResponse({ success: false, error: "שגיאה בתהליך ההזרקה." });
+        }
+        
+        return true;
     }
 });
