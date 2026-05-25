@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Temp-to-Save",
-  "version": "1.0",
-  "description": "Migrates temporary Gemini chat context to a new saved chat session.",
+  "name": "LLM Universal Context Migrator",
+  "version": "2.0",
+  "description": "Migrates temporary chat context between Gemini and ChatGPT.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "https://gemini.google.com/*"
+    "https://gemini.google.com/*",
+    "https://chatgpt.com/*"
   ],
   "action": {
     "default_popup": "popup/popup.html"
@@ -17,7 +18,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://gemini.google.com/*"],
+      "matches": [
+        "https://gemini.google.com/*",
+        "https://chatgpt.com/*"
+      ],
       "js": ["scripts/content.js"]
     }
   ]

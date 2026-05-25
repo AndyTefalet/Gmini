@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearBtn = document.getElementById('clear-btn');
     const statusMsg = document.getElementById('status-msg');
 
-    // פונקציה לעדכון מצב הכפתורים לפי כמות המידע שנצבר
     function updateUI() {
         chrome.storage.local.get(['accumulatedChats'], (result) => {
             const chats = result.accumulatedChats || [];
@@ -25,9 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateUI();
 
     saveBtn.addEventListener('click', async () => handleAction("EXTRACT_AND_SAVE_CHAT", "סורק ומוסיף לזיכרון..."));
-    forkBtn.addEventListener('click', async () => handleAction("ACTIVATE_FORK_MODE", "מצב פיצול הופעל. לחץ על הבועה הרצויה במסך."));
+    forkBtn.addEventListener('click', async () => handleAction("ACTIVATE_FORK_MODE", "מצב פיצול הופעל. לחץ על הבועה הרצויה."));
 
-    // כפתור לניקוי ידני של המערך
     clearBtn.addEventListener('click', () => {
         chrome.storage.local.remove(['accumulatedChats'], () => {
             updateUI();
@@ -61,8 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!tab.url.includes("gemini.google.com")) {
-                showStatus("שגיאה: פתח את Gemini תחילה.", "red");
+            if (!tab.url.includes("gemini.google.com") && !tab.url.includes("chatgpt.com")) {
+                showStatus("שגיאה: פתח את Gemini או ChatGPT תחילה.", "red");
                 return;
             }
 
