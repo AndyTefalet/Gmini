@@ -4,6 +4,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // ==========================================
     // פעולה 1: שאיבת השיחה הישנה
     // ==========================================
+    // ==========================================
+    // פעולה 1: שאיבת השיחה הישנה עם תנאי אורך
+    // ==========================================
     if (request.action === "EXTRACT_AND_SAVE_CHAT") {
         try {
             const chatHistory = document.querySelector('#chat-history');
@@ -20,21 +23,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 return true;
             }
 
-            let fullChatText = "אני מעביר לכאן שיחה זמנית שהתחלנו קודם. להלן ההקשר של מה שדיברנו עד כה. אל תענה על זה, רק תאשר שהבנת ונוכל להמשיך מאותה נקודה:\n\n";
-            fullChatText += "--- תחילת היסטוריית שיחה ---\n\n";
-
+            // איסוף כל בועות השיחה לטקסט גולמי
+            let chatLog = "";
             messages.forEach((msg) => {
                 const isUser = msg.tagName.toLowerCase() === 'user-query-content';
                 const prefix = isUser ? "משתמש:" : "Gemini:";
-                
                 const text = msg.textContent.trim();
                 
                 if (text) {
-                    fullChatText += `${prefix}\n${text}\n\n`;
+                    chatLog += `${prefix}\n${text}\n\n`;
                 }
             });
 
-            fullChatText += "--- סוף היסטוריית שיחה ---";
+            // הגדרת המגבלה וניהול התנאי
+            const MAX_LENGTH = 15000; // אפשר לשנות את המספר הזה לפי הצורך
+            let fullChatText = "";
+
+            if (chatLog.length > MAX_LENGTH) {
+                // השיחה ארוכה מדי - חותכים ושומרים רק את הסוף (החלק העדכני)
+                const truncatedLog = chatLog.substring(chatLog.length - MAX_LENGTH);
+                
+                fullChatText = "הוראת מערכת: אני מעביר לכאן שיחה זמנית שהתחלנו קודם. שים לב: השיחה המקורית הייתה ארוכה מדי ולכן הועבר אליך רק החלק האחרון שלה.\n" +
+                               "המשימה שלך כעת:\n" +
+                               "1. עדכן אותי שהשיחה נחתכה ושקיבלת רק את סופה.\n" +
+                               "2. שאל אותי עד 3 שאלות קצרות וממוקדות כדי להבין מה היה ההקשר בחלק החסר ואיך תרצה להמשיך.\n\n" +
+                               "--- תחילת היסטוריית שיחה (חלק אחרון בלבד) ---\n\n" +
+                               truncatedLog +
+                               "\n--- סוף היסטוריית שיחה ---";
+            } else {
+                // השיחה באורך תקין - הפרומפט הרגיל
+                fullChatText = "אני מעביר לכאן שיחה זמנית שהתחלנו קודם. להלן ההקשר של מה שדיברנו עד כה. אל תענה על זה, רק תאשר שהבנת ונוכל להמשיך מאותה נקודה:\n\n" +
+                               "--- תחילת היסטוריית שיחה ---\n\n" +
+                               chatLog +
+                               "\n--- סוף היסטוריית שיחה ---";
+            }
 
             chrome.storage.local.set({ 
                 savedChatContext: fullChatText,
